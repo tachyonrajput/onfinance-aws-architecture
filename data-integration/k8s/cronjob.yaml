@@ -1,0 +1,88 @@
+# data-integration/k8s/cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-data-fetcher
+spec:
+  schedule: "0 22 * * *"  # Run at 10 PM UTC every day
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: stock-data-fetcher
+            image: python:3.9-slim
+            command:
+            - /bin/sh
+            - -c
+            - |
+              pip install boto3 requests
+              python - << 'EOF'
+              import json
+              import os
+              import boto3
+              import requests
+              from datetime import datetime
+              
+              # Get environment variables
+              BUCKET_NAME = os.environ['BUCKET_NAME']
+              API_KEY = os.environ['ALPHA_VANTAGE_API_KEY']
+              SYMBOLS = os.environ['STOCK_SYMBOLS'].split(',')
+              
+              # Initialize AWS clients
+              s3_client = boto3.client('s3')
+              
+              def fetch_and_store():
+                  current_date = datetime.now().strftime('%Y-%m-%d')
+                  
+                  for symbol in SYMBOLS:
+                      print(f"Processing symbol: {symbol}")
+                      
+                      # Fetch data from Alpha Vantage API
+                      url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}&outputsize=compact"
+                      response = requests.get(url)
+                      
+                      if response.status_code != 200:
+                          print(f"API request failed with status code {response.status_code}")
+                          continue
+                      
+                      data = response.json()
+                      
+                      # Store raw data in S3
+                      s3_key = f"stock_data/{symbol}/{current_date}.json"
+                      s3_client.put_object(
+                          Bucket=BUCKET_NAME,
+                          Key=s3_key,
+                          Body=json.dumps(data),
+                          ContentType='application/json'
+                      )
+                      print(f"Successfully stored {symbol} data in S3")
+              
+              if __name__ == "__main__":
+                  fetch_and_store()
+              EOF
+            env:
+            - name: BUCKET_NAME
+              value: "onfinance-dev-stock-data"
+            - name: STOCK_SYMBOLS
+              value: "AAPL,MSFT,AMZN,GOOGL,META"
+            - name: ALPHA_VANTAGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: alpha-vantage-api-key
+            # AWS credentials
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-credentials
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-credentials
+                  key: secret-key
+            - name: AWS_REGION
+              value: "us-east-1"
+          restartPolicy: OnFailure
