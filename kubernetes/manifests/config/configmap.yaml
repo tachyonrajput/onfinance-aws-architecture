@@ -1,0 +1,10 @@
+# kubernetes/manifests/config/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  db_host: "onfinance-dev-db.xxxxxxxxxxxx.us-east-1.rds.amazonaws.com"
+  api_url: "http://backend-api"
+  log_level: "info"
+  environment: "development"
