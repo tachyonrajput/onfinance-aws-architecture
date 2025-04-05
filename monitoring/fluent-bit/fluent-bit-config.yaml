@@ -1,0 +1,40 @@
+# monitoring/fluent-bit/fluent-bit-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: kube-system
+  labels:
+    k8s-app: fluent-bit
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush           5
+        Log_Level       info
+        Daemon          off
+        Parsers_File    parsers.conf
+
+    [INPUT]
+        Name            tail
+        Tag             kube.*
+        Path            /var/log/containers/*.log
+        Parser          docker
+        DB              /var/log/flb_kube.db
+        Mem_Buf_Limit   5MB
+        Skip_Long_Lines On
+
+    [FILTER]
+        Name            kubernetes
+        Match           kube.*
+        Kube_URL        https://kubernetes.default.svc:443
+        Merge_Log       On
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+
+    [OUTPUT]
+        Name            cloudwatch
+        Match           kube.*
+        region          us-east-1
+        log_group_name  /onfinance/eks/cluster
+        log_stream_prefix  ${HOST_NAME}.
+        auto_create_group  true
